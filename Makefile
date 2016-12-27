@@ -16,7 +16,7 @@ USE_STL := YES
 WIN32_ENV := YES 
 #****************************************************************************
 
-USE_CHUNZHEN := NO
+USE_CHUNZHEN := YES
 
 CC     := gcc
 CXX    := g++
@@ -106,26 +106,30 @@ OUTPUT := lbs
 #****************************************************************************
 
 LOG_SRCS := 	\
-	../ulog/ulog.cpp
+	../net-utility/ulog/ulog.cpp
 
 CONFIG_SRCS :=	\
-	../uconfig/uconfig.cpp	\
-	../uconfig/uconfig_default.cpp	\
+	../net-utility/uconfig/uconfig.cpp	\
+	../net-utility/uconfig/uconfig_default.cpp	\
 
 FS_SRCS := \
+	../net-utility/utools/ufs.cpp	\
 	../net-utility/utools/ustring.cpp	\
 
 NET_SRCS := \
-		$(wildcard ../unetwork/*.cpp) 	\
-		$(wildcard ../uthread/*.cpp)	\
-		$(wildcard ../uhttp/*.cpp)		\
+		$(wildcard ../net-utility/unetwork/*.cpp) 	\
+		$(wildcard ../net-utility/uthread/*.cpp)	\
+		$(wildcard ../net-utility/uhttp/*.cpp)		\
 
 DEP_3RD := \
-		./3rd/cjson/cJSON.cpp	\
 
 SRCS := \
-		./main.cpp \
-		./area.cpp \
+		./main.cpp 		\
+		./area.cpp 		\
+		./lbsdb.cpp		\
+		./server.cpp	\
+		./serverunit.cpp	\
+		./connection.cpp	\
 
 ifeq (YES, ${USE_CHUNZHEN})
 	SRCS += ipdb_cz.cpp
@@ -134,7 +138,7 @@ else
 endif
 
 #SRCS += $(LOG_SRCS) $(CONFIG_SRCS) $(FS_SRCS) $(NET_SRCS)  $(DEP_3RD)
-SRCS +=  $(FS_SRCS)
+SRCS +=  $(FS_SRCS) $(LOG_SRCS) $(NET_SRCS) $(CONFIG_SRCS)
 
 DEP_SOURCES = $(notdir $(SRCS))
 OUTPUT_DEP_OBJS = $(patsubst %.cpp,%.o, $(DEP_SOURCES))
