@@ -8,6 +8,7 @@
 #include "lbsdb.h"
 
 #include <stdio.h>
+#include "area.h"
 
 template <typename T>
 void autoexpand(T & t, int newsize)
@@ -25,12 +26,12 @@ std::string itoa(int n)
     return buf;
 }
 
-CLbsDB::CLbsDB()
+CLbsDB::CLbsDB(const CArea & areadb)
     : node_map_()
     , isp_table_()
+    , areadb_(areadb)
 {
     initlock();
-    isp_table_.resize(5);
 }
 
 CLbsDB::~CLbsDB()
@@ -98,7 +99,7 @@ void CLbsDB::delone(const std::string & service, node_type * pnode)
 }
 
 void CLbsDB::add(const std::string & service, uint32 ip, int port, 
-    int ispflag, int area, std::map<std::string, int> & limit)
+    int ispflag, int area, const std::map<std::string, int> & limit)
 {
     if (ip == 0 || port == 0 || area < 0) {
         return;
@@ -128,7 +129,7 @@ void CLbsDB::add(const std::string & service, uint32 ip, int port,
 }
 
 void CLbsDB::update(const std::string & service, uint32 ip, int port, 
-    std::map<std::string, int> & params)
+    const std::map<std::string, int> & params)
 {
     if (ip == 0 || port == 0) {
         return;
@@ -144,6 +145,7 @@ void CLbsDB::update(const std::string & service, uint32 ip, int port,
         std::map<std::string, int>::const_iterator pit = params.begin();
         while (pit != params.end()) {
             node.loading[pit->first] = pit->second;
+            ++ pit;
         }
     }
     
@@ -202,13 +204,32 @@ std::vector<node_type> CLbsDB::get(const std::string & service,
 
 void CLbsDB::dump(std::string & out, int format)
 {
+    out.clear();
+    
     lock();
+    typedef void (CLbsDB::*fdump)(std::string&);
+    fdump f = &CLbsDB::dump_plain;
+
+    switch (format) {
+        case en_dump_html:
+            f = &CLbsDB::dump_html;
+            break;
+        default:
+            f = &CLbsDB::dump_plain;
+            break;
+    }
+    (this->*f)(out);
+    unlock();
+}
+
+void CLbsDB::dump_plain(std::string & out)
+{
     for (size_t isp = 0; isp < isp_table_.size(); isp++) {
         area_table & area_ = isp_table_[isp];
         if (area_.empty()) {
             continue;
         }
-        out.append("isp:").append(itoa(isp)).append("\n");
+        out.append(areadb_.get_ispname(isp)).append("\n");
 
         for (size_t area = 0; area < area_.size(); area ++) {
             service_map & smap = area_[area];
@@ -216,7 +237,8 @@ void CLbsDB::dump(std::string & out, int format)
                 continue;
             }
 
-            out.append("\tarea:").append(itoa(area)).append("\n");
+            out.append("\t").append(areadb_.get_areacode(area))
+                .append(areadb_.get_areaname(area)).append("\n");
 
             service_map::const_iterator it;
             for (it = smap.begin(); it != smap.end(); ++it) {
@@ -235,7 +257,83 @@ void CLbsDB::dump(std::string & out, int format)
             }
         }
     }
-    unlock();
+}
+
+void CLbsDB::dump_html(std::string & out)
+{
+    out.append("<HTML><BODY><br><br>");
+    //out.append("<style>td{border:1px solid black;padding-right:16px}</style><table>");
+    out.append("<table border=\"1\" cellspacing=\"0\">");
+    
+    for (size_t isp = 0; isp < isp_table_.size(); isp++) {
+        area_table & area_ = isp_table_[isp];
+        if (area_.empty()) {
+            continue;
+        }
+
+        out += "<tr><td colspan=\"100\" align=\"center\">" 
+            + areadb_.get_ispname(isp) + "</td></tr>";
+
+        for (size_t area = 0; area < area_.size(); area ++) {
+            service_map & smap = area_[area];
+            if (smap.empty()) {
+                continue;
+            }
+
+            std::string tmp;
+            int count = 0;
+            
+            service_map::const_iterator it;
+            for (it = smap.begin(); it != smap.end(); ++it) {
+                const pnode_array & parray = it->second;
+                if (parray.empty()) {
+                    continue;
+                }
+
+                count ++;
+                tmp += "<tr><td rowspan=\"" + itoa(parray.size() + 1)
+                    + "\">" + it->first + "</td></tr>";
+                
+                pnode_array::const_iterator nit;
+                for (nit = parray.begin(); nit != parray.end(); ++nit) {
+                    const node_type & node = *(*nit);
+
+                    tmp += "<tr>";
+                    tmp += "<td>" + node.ipstr() + ":" + itoa(node.port) + "</td>";
+
+                    typedef std::map<std::string, int>::const_iterator constit;
+                    for (constit it = node.loading.begin(); 
+                        it != node.loading.end(); ++ it) {
+
+                        int limit   = 0;
+                        constit limitit = node.limit.find(it->first);
+                        if (limitit != node.limit.end()) {
+                            limit = limitit->second;
+                        } else if (it->first == "net") {
+                            limitit = node.limit.find("band");
+                            if (limitit != node.limit.end()) {
+                                limit = limitit->second;
+                            }
+                        }
+                        
+                        int loading = it->second;
+                        tmp += "<td>" + it->first + ":" + itoa(loading)
+                            + "/" + itoa(limit) + "</td>";
+                    }
+                    
+                    tmp += "</tr>";
+                    
+                    count ++;
+                }
+            }
+
+            out += "<tr><td rowspan=\"" + itoa(count + 1)
+                    + "\">" + areadb_.get_areacode(area)
+                + areadb_.get_areaname(area) + "</td></tr>";
+            out += tmp;
+        }
+    }
+    out.append("</table></BODY></HTML>");
 }
 
 void CLbsDB::initlock()

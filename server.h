@@ -15,6 +15,10 @@
 #include <map>
 #include <set>
 
+#include "lbsdb.h"
+#include "area.h"
+#include "ipdb_cz.h"
+
 typedef struct SLbsConf
 {
     //server
@@ -24,12 +28,16 @@ typedef struct SLbsConf
     int             deamon;
     std::string     areadb;
     std::string     ipdb;
+    std::string     prefix;
+    int             getipcnt;
 
     //log
     int             log_level;
     std::string     log_path;
     std::string     log_filename;
 
+    //sequence. service <-> id
+    std::vector<std::string> services;
 } LbsConf_t;
 
 class CLbsServerUnit;
@@ -45,6 +53,12 @@ public:
 
     static void log_hook(int level, const char * fmt, va_list valist); 
 
+public:
+    CLbsDB & lbsdb();
+    const CArea & areadb() const;
+    const CIPDB_CZ & ipdb() const;
+    const LbsConf_t & config() const;
+    
 private:
     void run_forever();
 
@@ -65,9 +79,13 @@ private:
     char *  log_buf_;
     int     log_buf_size_;
     time_t  last_logfile_t_;
-    pthread_mutex_t mutex_;
+    pthread_mutex_t log_mutex_;
 
     std::vector<CLbsServerUnit *> server_units_;
+
+    CArea           area_db_;
+    CIPDB_CZ        ip_db_;
+    CLbsDB          lbs_db_;
 };
 
 #endif

@@ -37,10 +37,13 @@ CLbsServer::CLbsServer(LbsConf_t & config)
     , log_buf_size_(2048)
     , last_logfile_t_(0)
     , server_units_()
+    , area_db_()
+    , ip_db_()
+    , lbs_db_(area_db_)
 {
     sinstance   = this;
     log_buf_    = (char *)malloc(log_buf_size_);
-    pthread_mutex_init(&mutex_, NULL);
+    pthread_mutex_init(&log_mutex_, NULL);
 }
 
 CLbsServer::~CLbsServer()
@@ -55,11 +58,41 @@ CLbsServer::~CLbsServer()
     if (listen_fd_ > 0) {
         close(listen_fd_);
     }
-    pthread_mutex_destroy(&mutex_);
+    pthread_mutex_destroy(&log_mutex_);
+}
+
+CLbsDB & CLbsServer::lbsdb()
+{
+    return lbs_db_;
+}
+
+const CArea & CLbsServer::areadb() const
+{
+    return area_db_;
+}
+
+const CIPDB_CZ & CLbsServer::ipdb() const
+{
+    return ip_db_;
+}
+
+const LbsConf_t & CLbsServer::config() const
+{
+    return config_;
 }
 
 bool CLbsServer::run()
 {
+    if (!area_db_.load(config_.areadb.c_str())) {
+        fprintf(stderr, "load area db:%s failed!\n", config_.areadb.c_str());
+        return false;
+    }
+
+    if (!ip_db_.init(config_.ipdb.c_str())) {
+        fprintf(stderr, "load ip db:%s failed!\n", config_.areadb.c_str());
+        return false;
+    }
+    
     //init log.
     std::string logfile = config_.log_path; 
     if (makedir(logfile.c_str())) {
@@ -68,7 +101,7 @@ bool CLbsServer::run()
     }
     
     setulog(CLbsServer::log_hook);
-    //ulog(ulog_error, "\n\n%s\n", title);
+    ulog(ulog_error, "\n\nprogram start here!!!\n");
 
     if (!listen()) {
         ulog(ulog_error, "listen %s:%d failed!\n", 
@@ -78,7 +111,7 @@ bool CLbsServer::run()
 
     server_units_.resize(config_.threads);
     for (int i = 0; i < config_.threads; i++) {
-        server_units_[i] = new CLbsServerUnit();
+        server_units_[i] = new CLbsServerUnit(*this);
         server_units_[i]->start();
     }
 
@@ -104,7 +137,7 @@ void CLbsServer::run_forever()
         fd = accept(listen_fd_, (struct sockaddr *)&addr, &addr_len);
 
         if (fd > 0) {
-            ulog(ulog_info, "accept client, fd:%d, info:[%s:%d]\n",
+            ulog(ulog_debug, "accept client, fd:%d, info:[%s:%d]\n",
                 fd, inet_ntoa(addr.sin_addr) , ntohs(addr.sin_port));
 
             int workerid = idx ++ % server_units_.size();
@@ -201,7 +234,7 @@ void CLbsServer::log(int level, const char * fmt, va_list valist)
         return;
     }
 
-    pthread_mutex_lock(&mutex_);
+    pthread_mutex_lock(&log_mutex_);
     size_t off = 0;
     
     time_t t_time = time(NULL);
@@ -229,6 +262,6 @@ void CLbsServer::log(int level, const char * fmt, va_list valist)
     off += vsnprintf(log_buf_ + off, log_buf_size_ - off, fmt, valist);
 
     write(log_fd_, log_buf_, off);
-    pthread_mutex_unlock(&mutex_);
+    pthread_mutex_unlock(&log_mutex_);
 }
 

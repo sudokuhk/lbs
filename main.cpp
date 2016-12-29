@@ -169,6 +169,11 @@ bool load_config(const std::string & file, LbsConf_t & config)
             suc = false;
             break;
         }
+
+        config.prefix = "";
+        if ((value = pconfig->get_string("server", "prefix")) != NULL) {
+            config.prefix = value;
+        }
     } while (0);
 
      // log
@@ -191,6 +196,24 @@ bool load_config(const std::string & file, LbsConf_t & config)
             fprintf(stderr, "don't config log path, use default(%s)!\n", 
                 config.log_path.c_str());
         }
+    } while (0);
+
+    // sequence. service <-> id map.
+    do {
+        typedef std::map<std::string, std::string> group_type;
+
+        group_type group = pconfig->get_group("sequence");
+        for (group_type::iterator it = group.begin(); it != group.end(); ++it) {
+            int id = atoi(it->second.c_str());
+            if ((int)config.services.size() <= id) {
+                config.services.resize(id + 1);
+            }
+            config.services[id] = it->first;
+        }
+
+        //for (size_t i = 0; i < config.services.size(); i++) {
+        //    fprintf(stderr, "%d = %s\n", i, config.services[i].c_str());
+        //}
     } while (0);
 
     delete pconfig;
@@ -317,6 +340,7 @@ int main(int argc, char * argv[])
     }
     lbsconf.log_filename = appname;
     lbsconf.log_filename.append(".log");
+    lbsconf.getipcnt    = 2;
 
     CLbsServer server(lbsconf);
     if (!server.run()) {

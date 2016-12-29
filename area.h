@@ -51,9 +51,12 @@ struct isp_info {
 class CArea
 {
 public:
-    int get_areacode(const std::string & areaname);
-    int get_ispcode(const std::string & ispname);
-    
+    int get_areabyname(const std::string & areaname) const;
+    int get_ispcode(const std::string & ispname) const;
+    int get_areabycode(const std::string & areacode) const;
+    std::string get_ispname(int isp) const;
+    std::string get_areaname(int code) const;
+    std::string get_areacode(int idx) const;
 public:
     CArea();
 

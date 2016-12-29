@@ -75,6 +75,13 @@ struct sipinfo
 
         return buf;
     }
+
+    std::string portstr() const {
+        char buf[64];
+         snprintf(buf, 64, "%d", port);
+
+        return buf;
+    }
 };
 
 typedef sipinfo                             node_type;
@@ -86,25 +93,32 @@ typedef std::vector<service_map>            area_table;     //hash table.
 typedef std::vector<area_table>             isp_table;
 typedef pthread_mutex_t                     lock_type;
 
+class CArea;
+
 class CLbsDB
 {
 public:
-    CLbsDB();
+    enum {
+        en_dump_plain = 0,
+        en_dump_html,
+    };
+public:
+    CLbsDB(const CArea & areadb);
 
     ~CLbsDB();
 
     void add(const std::string & service, uint32 ip, int port, int ispflag, 
-        int area, std::map<std::string, int> & limit);
+        int area, const std::map<std::string, int> & limit);
 
     void update(const std::string & service, uint32 ip, int port,
-        std::map<std::string, int> & params);
+        const std::map<std::string, int> & params);
 
     void remove(const std::string & service, uint32 ip, int port);
 
     std::vector<node_type> get(const std::string & service, 
         int isp, int area, int count = DEF_GET_COUNT);
 
-    void dump(std::string & out, int format);
+    void dump(std::string & out, int format = en_dump_plain);
     
 private:
     void initlock();
@@ -114,11 +128,14 @@ private:
 
     void addone(const std::string & service, node_type * pnode);
     void delone(const std::string & service, node_type * pnode);
-    
+
+    void dump_plain(std::string & out);
+    void dump_html(std::string & out);
 private:
-    node_map    node_map_;
-    isp_table   isp_table_;
-    lock_type   lock_;
+    node_map        node_map_;
+    isp_table       isp_table_;
+    lock_type       lock_;
+    const CArea &   areadb_;
 };
 
 #endif

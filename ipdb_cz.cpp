@@ -192,6 +192,10 @@ bool CIPDB_CZ::init(const char * filename)
     index_b_  = B2IL(pdata_);    
     index_e_  = B2IL(pdata_ + 4);
     index_count_ = (index_e_ - index_b_) / en_index_size;
+
+    if (index_e_ > fsize) {
+        return false;
+    }
     
     return true;
 }

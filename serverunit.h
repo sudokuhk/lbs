@@ -13,6 +13,8 @@
 #include <unetwork/uschedule.h>
 #include "connection.h"
 
+class CLbsServer;
+
 class CLbsServerUnit
     : public CLbsConnection::CLbsMonitor
 {    
@@ -32,7 +34,7 @@ private:
     };
     
 public:
-    CLbsServerUnit();
+    CLbsServerUnit(CLbsServer & server);
 
     ~CLbsServerUnit();
 
@@ -43,8 +45,16 @@ public:
     bool accept(int fd, const char * ip);
 
 public:
-     virtual void onDisconnect(int fd);
-    
+    virtual void onDisconnect(int fd);
+    virtual void onNewNode(const std::string & service, uint32 ip, int port, 
+            int isp, const std::string & area, 
+            const std::map<std::string, int> & limits);
+    virtual void onDelNode(const std::string & service, uint32 ip, int port);
+    virtual void onGetNode(const std::string & service, uint32 ip, 
+            std::string & out);
+    virtual void onUptNode(const std::string & service, uint32 ip, int port,
+        const std::map<std::string, int> & loadings);
+    virtual void onDump(std::string & out);
 private:
     void run();
 
@@ -53,6 +63,7 @@ private:
     uschedule   schedule_;
     bool        running_;
     pthread_t   thread_;
+    CLbsServer &server_;
 };
 
 #endif

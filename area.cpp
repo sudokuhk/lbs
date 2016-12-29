@@ -14,7 +14,7 @@
 #include <utools/ustring.h>
 
 //gbk code.
-const unsigned char dianxin[]    = {0xB5, 0xE7, 0xD0, 0xC6};
+const unsigned char dianxin[]    = {0xB5, 0xE7, 0xD0, 0xC5};
 const unsigned char liantong[]   = {0xC1, 0xAA, 0xCD, 0xA8};
 const unsigned char yidong[]     = {0xD2, 0xC6, 0xB6, 0xAF};
 
@@ -32,7 +32,7 @@ CArea::~CArea()
 {
 }
 
-int CArea::get_areacode(const std::string & areaname)
+int CArea::get_areabyname(const std::string & areaname) const
 {
     for (size_t i = 0; i < area_.size(); i++) {
         if (areaname.find(area_[i].name) != std::string::npos) {
@@ -42,7 +42,16 @@ int CArea::get_areacode(const std::string & areaname)
     return -1;
 }
 
-int CArea::get_ispcode(const std::string & ispname)
+int CArea::get_areabycode(const std::string & areacode) const
+{
+    std::map<std::string, int>::const_iterator it = area_index_.find(areacode);
+    if (it != area_index_.end()) {
+        return it->second;
+    }
+    return -1;
+}
+
+int CArea::get_ispcode(const std::string & ispname) const
 {
     if (ispname.size() < 4) {
         return en_ctc;
@@ -56,6 +65,31 @@ int CArea::get_ispcode(const std::string & ispname)
 
     return en_ctc;
 }
+
+std::string CArea::get_ispname(int isp) const
+{
+    if (isp < 0 || isp >= (int)isp_.size()) {
+        return "";
+    }
+    return isp_[isp];
+}
+
+std::string CArea::get_areaname(int idx) const
+{
+    if (idx < 0 || idx >= (int)area_.size()) {
+        return "";
+    }
+    return area_[idx].name;
+}
+
+std::string CArea::get_areacode(int idx) const
+{
+    if (idx < 0 || idx >= (int)area_.size()) {
+        return "";
+    }
+    return area_[idx].code;
+}
+
 
 bool CArea::load(const char * filename)
 {
