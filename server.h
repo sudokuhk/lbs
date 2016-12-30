@@ -19,6 +19,8 @@
 #include "area.h"
 #include "ipdb_cz.h"
 
+typedef unsigned int uint32;
+
 typedef struct SLbsConf
 {
     //server
@@ -30,6 +32,7 @@ typedef struct SLbsConf
     std::string     ipdb;
     std::string     prefix;
     int             getipcnt;
+    std::string     defarea;
 
     //log
     int             log_level;
@@ -38,6 +41,11 @@ typedef struct SLbsConf
 
     //sequence. service <-> id
     std::vector<std::string> services;
+
+    // extend ipdb.
+    std::map<uint32, std::string>   ipdb_area;
+    std::map<uint32, int>           ipdb_isp;
+    
 } LbsConf_t;
 
 class CLbsServerUnit;

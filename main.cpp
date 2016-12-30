@@ -18,6 +18,7 @@
 #include "server.h"
 #include <uconfig/uconfig.h>
 #include <ulog/ulog.h>
+#include <utools/ustring.h>
 
 #ifdef USE_IPDB_CZ
 #include "ipdb_cz.h"
@@ -174,6 +175,11 @@ bool load_config(const std::string & file, LbsConf_t & config)
         if ((value = pconfig->get_string("server", "prefix")) != NULL) {
             config.prefix = value;
         }
+
+        config.defarea = "020";
+        if ((value = pconfig->get_string("server", "defarea")) != NULL) {
+            config.defarea = value;
+        }
     } while (0);
 
      // log
@@ -214,6 +220,32 @@ bool load_config(const std::string & file, LbsConf_t & config)
         //for (size_t i = 0; i < config.services.size(); i++) {
         //    fprintf(stderr, "%d = %s\n", i, config.services[i].c_str());
         //}
+    } while (0);
+
+    // ip = area, isp
+    // 1.2.3.4 = 020, 0 means 1.2.3.4 belongs to guangdong(020), telecom(0).
+    do {
+        typedef std::map<std::string, std::string> group_type;
+
+        group_type ipdb = pconfig->get_group("ipdb");
+        for (group_type::iterator it = ipdb.begin(); it != ipdb.end(); ++it) {
+            
+            std::vector<std::string> areaisp;
+            split(it->second.c_str(), ',', areaisp);
+
+            if (areaisp.size() != 2) {
+                continue;
+            }
+
+            int     isp   = atoi(areaisp[1].c_str());
+            uint32  ip = str2ip(it->first.c_str());
+            
+            config.ipdb_area[ip] = areaisp[0];
+            config.ipdb_isp[ip]  = isp;
+
+            //printf("extend ipdb:%s:%d, area:%s, isp:%d\n",
+            //    it->first.c_str(), ip, areaisp[0].c_str(), isp);
+        }
     } while (0);
 
     delete pconfig;

@@ -19,6 +19,144 @@ void autoexpand(T & t, int newsize)
     }
 }
 
+template <typename T>
+int getN(const T & t, int n, std::vector<node_type> & out)
+{
+    typename T::const_iterator it = t.begin();
+    int cnt = 0;
+    
+    while (n > 0 && it != t.end()) {
+
+        std::map<std::string, int>::const_iterator it1, it2;
+        const struct sipinfo & ip = **it;
+        bool valid = true;
+        
+        for (it1 = ip.loading.begin(); it1 != ip.loading.end(); ++ it1) {
+            const std::string & key = it1->first;
+            int loading = it1->second;
+
+            it2 = ip.limit.find(key);
+            if (it2 != ip.limit.end()) {
+                int limit = it2->second;
+                if (limit != 0 && loading >= limit) {
+                    valid = false;
+                    break;
+                }
+            }
+        }
+
+        if (valid) {
+            out.push_back(**it);
+            n --;
+            cnt ++;
+        }
+
+        ++ it;
+    }
+
+    return cnt;
+}
+
+#if 0
+class CCpuStrategy
+{
+public:
+    bool operator()(const sipinfo & lhs, const sipinfo & rhs) {
+        int cpu1 = lhs.get_loading("cpu");
+        int cpu2 = rhs.get_loading("cpu");
+
+        if (cpu1 != cpu2) {
+            return cpu1 < cpu2;
+        } else {
+            return lhs.key() < rhs.key();
+        }
+    }
+};
+
+class CNetStrategy
+{
+public:
+    bool operator()(const sipinfo & lhs, const sipinfo & rhs) {
+        int cpu1 = lhs.get_loading("net");
+        int cpu2 = rhs.get_loading("net");
+
+        if (cpu1 != cpu2) {
+            return cpu1 < cpu2;
+        } else {
+            return lhs.key() < rhs.key();
+        }
+    }
+};
+#else
+bool cpu_strategy(const sipinfo * plhs, const sipinfo * prhs) 
+{
+    const sipinfo & lhs = *plhs;
+    const sipinfo & rhs = *prhs;
+    
+    int cpu1 = lhs.get_loading("cpu");
+    int cpu2 = rhs.get_loading("cpu");
+
+    if (cpu1 != cpu2) {
+        return cpu1 < cpu2;
+    } else {
+        return lhs.key() < rhs.key();
+    }
+}
+
+bool net_strategy(const sipinfo * plhs, const sipinfo * prhs) 
+{
+    const sipinfo & lhs = *plhs;
+    const sipinfo & rhs = *prhs;
+    
+    int cpu1 = lhs.get_loading("net");
+    int cpu2 = rhs.get_loading("net");
+
+    if (cpu1 != cpu2) {
+        return cpu1 < cpu2;
+    } else {
+        return lhs.key() < rhs.key();
+    }
+}
+
+class CCpuStrategy
+{
+public:
+    bool operator()(sipinfo * const & plhs, sipinfo * const & prhs) {
+
+        const sipinfo & lhs = *plhs;
+        const sipinfo & rhs = *prhs;
+    
+        int cpu1 = lhs.get_loading("cpu");
+        int cpu2 = rhs.get_loading("cpu");
+
+        if (cpu1 != cpu2) {
+            return cpu1 < cpu2;
+        } else {
+            return lhs.key() < rhs.key();
+        }
+    }
+};
+
+class CNetStrategy
+{
+public:
+    bool operator()(sipinfo * const & plhs, sipinfo * const & prhs) {
+        const sipinfo & lhs = *plhs;
+        const sipinfo & rhs = *prhs;
+        
+        int cpu1 = lhs.get_loading("net");
+        int cpu2 = rhs.get_loading("net");
+
+        if (cpu1 != cpu2) {
+            return cpu1 < cpu2;
+        } else {
+            return lhs.key() < rhs.key();
+        }
+    }
+};
+
+#endif
+
 std::string itoa(int n) 
 {
     char buf[15];
@@ -98,11 +236,11 @@ void CLbsDB::delone(const std::string & service, node_type * pnode)
     }
 }
 
-void CLbsDB::add(const std::string & service, uint32 ip, int port, 
+int CLbsDB::add(const std::string & service, uint32 ip, int port, 
     int ispflag, int area, const std::map<std::string, int> & limit)
 {
     if (ip == 0 || port == 0 || area < 0) {
-        return;
+        return -1;
     }
     
     node_type node;
@@ -116,7 +254,7 @@ void CLbsDB::add(const std::string & service, uint32 ip, int port,
     node_type & existsone = node_map_[node.key()];
     if (existsone.ispflag == ispflag && existsone.area == area) {
         unlock();
-        return;
+        return 1;
     } else {
         if (existsone.ip != 0) {
             delone(service, &existsone);
@@ -125,14 +263,14 @@ void CLbsDB::add(const std::string & service, uint32 ip, int port,
         addone(service, &node_map_[node.key()]);
     }
     unlock();
-    return;
+    return 0;
 }
 
-void CLbsDB::update(const std::string & service, uint32 ip, int port, 
+int CLbsDB::update(const std::string & service, uint32 ip, int port, 
     const std::map<std::string, int> & params)
 {
     if (ip == 0 || port == 0) {
-        return;
+        return -1;
     }
     
     uint64 key = node_type::key(ip, port);
@@ -148,16 +286,18 @@ void CLbsDB::update(const std::string & service, uint32 ip, int port,
             ++ pit;
         }
     }
-    
     unlock();
+    
+    return 0;
 }
 
-void CLbsDB::remove(const std::string & service, uint32 ip, int port)
+int CLbsDB::remove(const std::string & service, uint32 ip, int port)
 {
     if (ip == 0 || port == 0) {
-        return;
+        return -1;
     }
 
+    int ret = -1;
     uint64 key = node_type::key(ip, port);
     
     lock();
@@ -166,16 +306,20 @@ void CLbsDB::remove(const std::string & service, uint32 ip, int port)
         node_type & node = it->second;
         delone(service, &node);
         node_map_.erase(it);
+        ret = 0;
     }
-    
     unlock();
+    return ret;
 }
 
 std::vector<node_type> CLbsDB::get(const std::string & service, 
-    int isp, int area, int count)
+    int isp, int area, int count, int strategy)
 {
     std::vector<node_type> out;
 
+    std::set<pnode_type, CCpuStrategy> cpuset;
+    std::set<pnode_type, CNetStrategy> netset;
+    
     lock();
     if (isp < (int)isp_table_.size()) {
         area_table & areatb = isp_table_[isp];
@@ -187,11 +331,16 @@ std::vector<node_type> CLbsDB::get(const std::string & service,
                 if (sit != smap.end()) {
                     const pnode_array & parray = sit->second;
 
-                    pnode_array::const_iterator nit = parray.begin();
-                    while (count > 0 && nit != parray.end()) {
-                        out.push_back(**nit);
-                        ++ nit;
-                        count --;
+                    switch (strategy) {
+                        case en_strategy_net:
+                            netset.insert(parray.begin(), parray.end());
+                            count -= getN(cpuset, count, out);
+                            break;
+                        case en_strategy_cpu:
+                        default:
+                            cpuset.insert(parray.begin(), parray.end());
+                            count -= getN(cpuset, count, out);
+                            break;
                     }
                 }
             }
@@ -309,12 +458,7 @@ void CLbsDB::dump_html(std::string & out)
                         constit limitit = node.limit.find(it->first);
                         if (limitit != node.limit.end()) {
                             limit = limitit->second;
-                        } else if (it->first == "net") {
-                            limitit = node.limit.find("band");
-                            if (limitit != node.limit.end()) {
-                                limit = limitit->second;
-                            }
-                        }
+                        } 
                         
                         int loading = it->second;
                         tmp += "<td>" + it->first + ":" + itoa(loading)

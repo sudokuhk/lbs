@@ -221,7 +221,7 @@ int main(int argc, char * argv[])
     char buf1[100], buf2[100];
     g2u(country.c_str(), country.size(), buf1, 100);
     g2u(area.c_str(), area.size(), buf2, 100);
-    printf("%s----%s----%s\n", argv[1], buf1, buf2);
+    printf("%s:%u----%s----%s\n", argv[1], str2ip(argv[1]), buf1, buf2);
 
     return 0;
 }

@@ -53,7 +53,7 @@ struct sipinfo
         return lhs.ip == rhs.ip && lhs.port == rhs.port;
     }
 
-    uint64 key() {
+    uint64 key() const {
         uint64 k = ip;
         k = (k << 32) | port;
         return k;
@@ -82,6 +82,24 @@ struct sipinfo
 
         return buf;
     }
+
+    int get_limit(const char * key) const {
+        std::map<std::string, int>::const_iterator it = limit.find(key);
+        if (it != limit.end()) {
+            return it->second;
+        }
+
+        return 0;
+    }
+
+    int get_loading(const char * key) const {
+        std::map<std::string, int>::const_iterator it = loading.find(key);
+        if (it != loading.end()) {
+            return it->second;
+        }
+
+        return 0;
+    }
 };
 
 typedef sipinfo                             node_type;
@@ -99,6 +117,11 @@ class CLbsDB
 {
 public:
     enum {
+        en_strategy_cpu,
+        en_strategy_net,
+    };
+    
+    enum {
         en_dump_plain = 0,
         en_dump_html,
     };
@@ -107,16 +130,17 @@ public:
 
     ~CLbsDB();
 
-    void add(const std::string & service, uint32 ip, int port, int ispflag, 
+    int add(const std::string & service, uint32 ip, int port, int ispflag, 
         int area, const std::map<std::string, int> & limit);
 
-    void update(const std::string & service, uint32 ip, int port,
+    int update(const std::string & service, uint32 ip, int port,
         const std::map<std::string, int> & params);
 
-    void remove(const std::string & service, uint32 ip, int port);
+    int remove(const std::string & service, uint32 ip, int port);
 
     std::vector<node_type> get(const std::string & service, 
-        int isp, int area, int count = DEF_GET_COUNT);
+        int isp, int area, int count = DEF_GET_COUNT, 
+        int strategy = en_strategy_cpu);
 
     void dump(std::string & out, int format = en_dump_plain);
     
@@ -131,6 +155,7 @@ private:
 
     void dump_plain(std::string & out);
     void dump_html(std::string & out);
+
 private:
     node_map        node_map_;
     isp_table       isp_table_;

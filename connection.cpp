@@ -52,6 +52,11 @@ int CLbsConnection::onhttp(const uhttprequest & request,
         ulog(ulog_debug, "socket reset by peer(%s)!\n", peerip_.c_str());
         return -1;
     }
+
+    if (request.method() == uhttp_method_unknown) {
+        ulog(ulog_error, "unknown request from (%s)!\n", peerip_.c_str());
+        return -1;
+    }
     
     const std::string & path = request.uri().path();
     const CLbsConnection::handler_type * h;
@@ -66,7 +71,7 @@ int CLbsConnection::onhttp(const uhttprequest & request,
     
     if (h->cmd == NULL) {
         if (get(request, response, errcode) != 0) {
-            ulog(ulog_error, "not find handler for path:%s\n", path.c_str());
+            ulog(ulog_error, "unknown request:%s\n", path.c_str());
             ret = notfind(request, response, errcode);
         } else {
             ret = 0;
@@ -123,12 +128,20 @@ int CLbsConnection::setcpu(const uhttprequest & request,
     std::string ltip = limits["lt"];
     std::string ydip = limits["yd"];
     std::string area = limits["area"];
+    
+    int band = atoi(limits["band"].c_str());;
+    int net  = atoi(limits["net"].c_str());
 
     limits.erase("port");   //remove client listen port. no need!
     limits.erase("dx");
     limits.erase("lt");
     limits.erase("yd");
     limits.erase("area");
+    limits.erase("band");
+    limits.erase("net");
+    if (net == 0 && band != 0) {
+        limits["net"] = band;
+    }
 
     if (area.empty()) {
         return -1;
@@ -216,7 +229,7 @@ int CLbsConnection::setcpu(const uhttprequest & request,
         while (socket_.getline(rdbuf, 1024).good()) {
             loading.clear();
             
-            //ulog(ulog_debug, "contine:%s\n", rdbuf);
+            ulog(ulog_debug, "contine(%s):%s\n", peerip_.c_str(), rdbuf);
 
             if (sscanf(rdbuf, "net%d", &net) == 1) {
                 loading["net"] = net;     
@@ -290,7 +303,11 @@ int CLbsConnection::setcpu(const uhttprequest & request,
     }
 
     //disconnect
+    
+        
+    
     for (const_ssit it = service2port.begin(); it != service2port.end(); ++ it) {
+        
         std::vector<std::string> vport;
         split(it->second.c_str(), ',', vport);
 
@@ -301,14 +318,20 @@ int CLbsConnection::setcpu(const uhttprequest & request,
             }
             
             if (dxuip != 0) {
+                ulog(ulog_info, "service[%s] addr[%s:%d:%d] disconnect!\n",
+                    it->first.c_str(), dxip.c_str(), port, flag1);
                 monitor_.onDelNode(it->first, dxuip, port);
             }
 
             if (ltuip != 0) {
+                ulog(ulog_info, "service[%s] addr[%s:%d:%d] disconnect!\n",
+                    it->first.c_str(), ltip.c_str(), port, flag2);
                 monitor_.onDelNode(it->first, ltuip, port);
             }
 
             if (yduip != 0) {
+                ulog(ulog_info, "service[%s] addr[%s:%d:%d] disconnect!\n",
+                    it->first.c_str(), ydip.c_str(), port, flag3);
                 monitor_.onDelNode(it->first, yduip, port);
             }
         }
@@ -339,11 +362,15 @@ int CLbsConnection::get(const uhttprequest & request,
     const std::string & path = request.uri().path();
 
     ulog(ulog_debug, "get path:%s, prefix:%s\n", path.c_str(), config_.prefix.c_str());
-    std::string::size_type npos = path.find(config_.prefix);
-    if (npos != 1) { //skip root path.
-        return -1;
+
+    std::string match = path.substr(1); //skip /
+    if (!config_.prefix.empty()) {
+        std::string::size_type npos = path.find(config_.prefix);
+        if (npos != 1) { //skip root path.
+            return -1;
+        }
+        match = path.substr(npos + config_.prefix.size());
     }
-    std::string match = path.substr(npos + config_.prefix.size());
 
     for (size_t i = 0; i < config_.services.size(); i++) {
         if (config_.services[i].empty()) {
@@ -363,8 +390,8 @@ int CLbsConnection::get(const uhttprequest & request,
     monitor_.onGetNode(service, uip, out);
     response.set_content(out);
 
-    ulog(ulog_info, "service:[%s], client:[%s], out:[%s]\n", 
-        service.c_str(), peerip_.c_str(), out.c_str());
+    //ulog(ulog_info, "service:[%s], client:[%s], out:[%s]\n", 
+    //    service.c_str(), peerip_.c_str(), out.c_str());
 
     response.set_statuscode(uhttp_status_ok);
 

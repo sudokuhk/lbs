@@ -8,8 +8,16 @@
 #ifndef __LBS_CLIENT_H__
 #define __LBS_CLIENT_H__
 
+typedef struct LbsClientConf
+{
+} LbsClientConf_t;
+
 class CLbsClient
 {
+public:
+
+private:
+    
 };
 
 #endif

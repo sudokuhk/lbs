@@ -29,10 +29,6 @@ public:
     int get(uint32 ip, std::string & country, std::string & area) const;
 
     int get(const char * ip, std::string & country, std::string & area) const;
-
-private:
-    uint32 str2ip(const char * ip) const;
-    std::string ip2str(uint32 ip) const;
     
 private:
     std::string data_;

@@ -63,15 +63,18 @@ void CLbsServerUnit::onNewNode(const std::string & service, uint32 ip, int port,
             int isp, const std::string & area, 
             const std::map<std::string, int> & limits)
 {
-    ulog(ulog_debug, "new node, service:%s, [%s:%d:%d][%s]\n",
-        service.c_str(), ip2str(ip).c_str(), port, isp, area.c_str());
-    
     CLbsDB & lbsdb = server_.lbsdb();
     const CArea & areadb = server_.areadb();
 
     const int areacode    = areadb.get_areabycode(area);
     if (areacode != -1) {
-        lbsdb.add(service, ip, port, isp, areacode, limits);
+        if (lbsdb.add(service, ip, port, isp, areacode, limits) == 0) {
+            ulog(ulog_info, "add service:%s, [%s:%d:%d][%s]\n",
+                service.c_str(), ip2str(ip).c_str(), port, isp, area.c_str());
+        } else {
+            ulog(ulog_debug, "exists node, service:%s, [%s:%d:%d][%s]\n",
+                service.c_str(), ip2str(ip).c_str(), port, isp, area.c_str());
+        }
     } else {
         ulog(ulog_error, "unkown area(%s), service:%s, [%s:%d:%d]\n",
             area.c_str(), service.c_str(), ip2str(ip).c_str(), port, isp);
@@ -84,11 +87,14 @@ void CLbsServerUnit::onNewNode(const std::string & service, uint32 ip, int port,
 
 void CLbsServerUnit::onDelNode(const std::string & service, uint32 ip, int port)
 {
-    ulog(ulog_debug, "del node, service:%s, [%s:%d]\n",
-        service.c_str(), ip2str(ip).c_str(), port);
+    //ulog(ulog_debug, "del node, service:%s, [%s:%d]\n",
+    //    service.c_str(), ip2str(ip).c_str(), port);
 
     CLbsDB & lbsdb = server_.lbsdb();
-    lbsdb.remove(service, ip, port);
+    if (lbsdb.remove(service, ip, port) == 0) {
+        ulog(ulog_info, "del service:%s, [%s:%d]\n",
+            service.c_str(), ip2str(ip).c_str(), port);
+    }
 }
 
 void CLbsServerUnit::onGetNode(const std::string & service, uint32 ip, 
@@ -97,34 +103,60 @@ void CLbsServerUnit::onGetNode(const std::string & service, uint32 ip,
     CLbsDB & lbsdb = server_.lbsdb();
     const CArea & areadb = server_.areadb();
     const CIPDB_CZ & ipdb = server_.ipdb();
+    const LbsConf_t & config = server_.config();
 
     std::string area, isp;
-    
-    ipdb.get(ip, area, isp);
-    int iarea = areadb.get_areabyname(area);
-    int iisp  = areadb.get_ispcode(isp);
+    int iarea, iisp;
 
-    ulog(ulog_info, "get node, ip:%s, area:%s, isp:%s\n", 
+    std::map<uint32, std::string>::const_iterator 
+        areait = config.ipdb_area.find(ip);
+    
+    if (areait != config.ipdb_area.end()) {
+        iarea = areadb.get_areabycode(areait->second);
+        iisp  = 0;
+        
+        std::map<uint32, int>::const_iterator ispit = config.ipdb_isp.find(ip);
+        if (ispit != config.ipdb_isp.end()) {
+            iisp = ispit->second;
+        }
+    } else {
+        ipdb.get(ip, area, isp);
+        iarea = areadb.get_areabyname(area);
+        iisp  = areadb.get_ispcode(isp);
+    }
+
+    ulog(ulog_debug, "onGetNode: ip:%s, area:%s, isp:%s\n", 
         ip2str(ip).c_str(), 
         CIPDB_CZ::gbk2utf(areadb.get_areaname(iarea)).c_str(), 
         CIPDB_CZ::gbk2utf(areadb.get_ispname(iisp)).c_str());
     if (iarea < 0) {
-        iarea = 28; //guangdong
-        ulog(ulog_warn, "get node, ip:%s, area error, use default(%d)\n", 
-            ip2str(ip).c_str(), iarea);
+        iarea = areadb.get_areabycode(config.defarea); //guangdong
+        if (iarea == -1) {
+            ulog(ulog_error, "no default area!\n"); 
+            return ;
+        }
+        
+        ulog(ulog_info, "ip:%s, country:%s, area:%s, use default:%s\n", 
+            ip2str(ip).c_str(), 
+            CIPDB_CZ::gbk2utf(area).c_str(), 
+            CIPDB_CZ::gbk2utf(isp).c_str(), 
+            CIPDB_CZ::gbk2utf(areadb.get_areaname(iarea)).c_str());
     }
 
-    int count = server_.config().getipcnt;
+    int count = config.getipcnt;
+    if (count == 1) { //at least 2. avoid server down.
+        count ++;
+    }
 
     std::vector<node_type> outv;
     
     std::vector<node_type> out1 = lbsdb.get(service, iisp, iarea, count);
     count -= out1.size();
     outv.insert(outv.end(), out1.begin(), out1.end());
-    
-    if (count > 0) {
-        const SAreaInfo * info = areadb.get(iarea);
-        if (info != NULL) {
+
+    const SAreaInfo * info = areadb.get(iarea);
+    if (info != NULL) {
+        if (count > 0) { // must be over area.
             const std::vector<int> & neigbours = info->neigbours;
             for (size_t i = 0; i < neigbours.size(); i++) {
                 if (neigbours[i] == iarea) {
@@ -138,6 +170,24 @@ void CLbsServerUnit::onGetNode(const std::string & service, uint32 ip,
                     break;
                 }
             }
+        } else { //select one from other area.
+            count = 1;
+            const std::vector<int> & neigbours = info->neigbours;
+            for (size_t i = 0; i < neigbours.size(); i++) {
+                if (neigbours[i] == iarea) {
+                    continue;
+                }
+                out1 = lbsdb.get(service, iisp, neigbours[i], count);
+                outv.insert(outv.end(), out1.begin(), out1.end());
+                count -= out1.size();
+
+                if (count == 0) {
+                    break;
+                }
+            }
+            if (count == 0) {
+                outv.pop_back();
+            }
         }
     }
 
@@ -145,6 +195,12 @@ void CLbsServerUnit::onGetNode(const std::string & service, uint32 ip,
         out.append(outv[i].ipstr().c_str()).append(":")
             .append(outv[i].portstr().c_str()).append(",");
     }
+
+    ulog(ulog_info, "service:[%s], client:[%s][%s:%s], out:[%s]\n", 
+        service.c_str(), ip2str(ip).c_str(), 
+        CIPDB_CZ::gbk2utf(areadb.get_areaname(iarea)).c_str(), 
+        CIPDB_CZ::gbk2utf(areadb.get_ispname(iisp)).c_str(), 
+        out.c_str());
 }
 
 void CLbsServerUnit::onUptNode(const std::string & service, uint32 ip, int port,

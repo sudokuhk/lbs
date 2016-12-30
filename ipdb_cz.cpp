@@ -15,6 +15,7 @@
 #include <errno.h>
 #include <string.h>
 #include <iconv.h>    
+#include <utools/ustring.h>
 
 #define B2IL(b) \
     (((b)[0] & 0xFF) | (((b)[1] << 8) & 0xFF00) | \
@@ -99,7 +100,6 @@ int get(const uint8 * data, uint32 ip, std::string & country, std::string & area
 
     const uint8 * pdata  = data + data_off;
     uint32 eip       = B2IL(pdata);
-
     if (bip > ip || eip < ip) {
         return -1;
     }
@@ -152,7 +152,7 @@ CIPDB_CZ::~CIPDB_CZ()
 }
 
 bool CIPDB_CZ::init(const char * filename)
-{
+{   
     if (filename == NULL) {
         fprintf(stderr, "ipdb filename NULL!\n");
         return false;
@@ -212,30 +212,5 @@ int CIPDB_CZ::get(const char * ip, std::string & country, std::string & area) co
     }
 
     return get(str2ip(ip), country, area);
-}
-
-uint32 CIPDB_CZ::str2ip(const char * ip) const
-{
-    unsigned int num[4];
-    unsigned int ret = 0;
-    int cnt = sscanf(ip, "%d.%d.%d.%d", &num[0], &num[1], &num[2], &num[3]);
-
-    if (cnt == 4) {
-        ret = ret | (num[0] << 24) | (num[1] << 16) | (num[2] << 8) | (num[3]);
-    }
-
-    return ret;
-}
-
-std::string CIPDB_CZ::ip2str(uint32 ip) const
-{
-    char buf[64];
-    snprintf(buf, 64, "%d.%d.%d.%d",
-        (ip >> 24) & 0xFF,
-        (ip >> 16) & 0xFF,
-        (ip >> 8) & 0xFF,
-        (ip >> 0) & 0xFF);
-
-    return buf;
 }
 
