@@ -71,7 +71,8 @@ int CLbsConnection::onhttp(const uhttprequest & request,
     
     if (h->cmd == NULL) {
         if (get(request, response, errcode) != 0) {
-            ulog(ulog_error, "unknown request:%s\n", path.c_str());
+            ulog(ulog_error, "unknown request from(%s):%s\n", 
+                peerip_.c_str(), path.c_str());
             ret = notfind(request, response, errcode);
         } else {
             ret = 0;

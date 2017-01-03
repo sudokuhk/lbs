@@ -185,9 +185,9 @@ void CLbsServerUnit::onGetNode(const std::string & service, uint32 ip,
                     break;
                 }
             }
-            if (count == 0) {
-                outv.pop_back();
-            }
+            //if (count == 0) {
+            //    outv.pop_back();
+            //}
         }
     }
 

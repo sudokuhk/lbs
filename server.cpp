@@ -197,7 +197,7 @@ bool CLbsServer::reopen_log()
                 now > sb.st_mtime)) {
             
             struct tm tm_time;
-            gmtime_r(&sb.st_mtime, &tm_time);
+            localtime_r(&sb.st_mtime, &tm_time);
         
             char buf[20];
             strftime(buf, sizeof(buf), "%Y%m%d", &tm_time); 

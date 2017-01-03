@@ -334,7 +334,7 @@ std::vector<node_type> CLbsDB::get(const std::string & service,
                     switch (strategy) {
                         case en_strategy_net:
                             netset.insert(parray.begin(), parray.end());
-                            count -= getN(cpuset, count, out);
+                            count -= getN(netset, count, out);
                             break;
                         case en_strategy_cpu:
                         default:
