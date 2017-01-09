@@ -130,6 +130,8 @@ SRCS := \
 		./server.cpp	\
 		./serverunit.cpp	\
 		./connection.cpp	\
+		./log.cpp			\
+		./client.cpp		\
 
 ifeq (YES, ${USE_CHUNZHEN})
 	SRCS += ipdb_cz.cpp

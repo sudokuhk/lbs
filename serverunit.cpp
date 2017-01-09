@@ -100,25 +100,19 @@ void CLbsServerUnit::onDelNode(const std::string & service, uint32 ip, int port)
 void CLbsServerUnit::onGetNode(const std::string & service, uint32 ip, 
         std::string & out)
 {
-    CLbsDB & lbsdb = server_.lbsdb();
-    const CArea & areadb = server_.areadb();
-    const CIPDB_CZ & ipdb = server_.ipdb();
+          CLbsDB &    lbsdb  = server_.lbsdb();
+    const CArea &     areadb = server_.areadb();
+    const CIPDB_CZ &  ipdb   = server_.ipdb();
     const LbsConf_t & config = server_.config();
 
     std::string area, isp;
     int iarea, iisp;
 
-    std::map<uint32, std::string>::const_iterator 
-        areait = config.ipdb_area.find(ip);
-    
-    if (areait != config.ipdb_area.end()) {
-        iarea = areadb.get_areabycode(areait->second);
-        iisp  = 0;
-        
-        std::map<uint32, int>::const_iterator ispit = config.ipdb_isp.find(ip);
-        if (ispit != config.ipdb_isp.end()) {
-            iisp = ispit->second;
-        }
+    if (get_areaisp(config.extra_ipdb, ip, area, iisp)) {
+        iarea = areadb.get_areabycode(area);
+        //iisp  = iisp;
+        ulog(ulog_info, "get ip from extra db: ip:%s, area:%d, isp:%d\n", 
+            ip2str(ip).c_str(), iarea, iisp);
     } else {
         ipdb.get(ip, area, isp);
         iarea = areadb.get_areabyname(area);
@@ -144,50 +138,41 @@ void CLbsServerUnit::onGetNode(const std::string & service, uint32 ip,
     }
 
     int count = config.getipcnt;
-    if (count == 1) { //at least 2. avoid server down.
-        count ++;
-    }
 
-    std::vector<node_type> outv;
-    
-    std::vector<node_type> out1 = lbsdb.get(service, iisp, iarea, count);
-    count -= out1.size();
-    outv.insert(outv.end(), out1.begin(), out1.end());
+    std::vector<node_type> outv = lbsdb.get(service, iisp, iarea, count);
+    count -= outv.size();
 
     const SAreaInfo * info = areadb.get(iarea);
     if (info != NULL) {
-        if (count > 0) { // must be over area.
-            const std::vector<int> & neigbours = info->neigbours;
-            for (size_t i = 0; i < neigbours.size(); i++) {
-                if (neigbours[i] == iarea) {
-                    continue;
-                }
-                out1 = lbsdb.get(service, iisp, neigbours[i], count);
-                outv.insert(outv.end(), out1.begin(), out1.end());
-                count -= out1.size();
+        std::vector<node_type> out1;
+        const std::vector<int> & neigbours = info->neigbours;
 
-                if (count == 0) {
-                    break;
-                }
+        int countin = 0;
+        if (outv.size() > 0) {
+            countin = 1;
+            count   = 1;
+        }
+        
+        for (size_t i = 0; i < neigbours.size(); i++) {
+            if (neigbours[i] == iarea) {
+                continue;
             }
-        } else { //select one from other area.
-            count = 1;
-            const std::vector<int> & neigbours = info->neigbours;
-            for (size_t i = 0; i < neigbours.size(); i++) {
-                if (neigbours[i] == iarea) {
-                    continue;
-                }
-                out1 = lbsdb.get(service, iisp, neigbours[i], count);
-                outv.insert(outv.end(), out1.begin(), out1.end());
-                count -= out1.size();
+            
+            out1 = lbsdb.get(service, iisp, neigbours[i], count);
+            outv.insert(outv.end(), out1.begin(), out1.end());
+            count -= out1.size();
 
-                if (count == 0) {
-                    break;
-                }
+            if (out1.size() > 0) {
+                countin ++;
+            } else {
+                continue;
             }
-            //if (count == 0) {
-            //    outv.pop_back();
-            //}
+
+            if (countin > 1) {
+                break;
+            } else {
+                count = 1;
+            }
         }
     }
 

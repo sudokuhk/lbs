@@ -13,9 +13,11 @@
 #include <string>
 #include <iostream>
 
+#include "log.h"
 #include "area.h"
 #include "lbsdb.h"
 #include "server.h"
+#include "client.h"
 #include <uconfig/uconfig.h>
 #include <ulog/ulog.h>
 #include <utools/ustring.h>
@@ -43,7 +45,8 @@ const char * get_version()
     #define VERSION_BUF_SIZE 30
     static char version[VERSION_BUF_SIZE] = {0};
     if (version[0] == 0) {
-        snprintf(version, VERSION_BUF_SIZE, "%2d.%2d.%3d", MAJOR, MINOR, BUILD);
+        snprintf(version, VERSION_BUF_SIZE, "%d.%d.%d", 
+            MAJOR, MINOR, BUILD);
     }
     return version;
     #undef VERSION_BUF_SIZE
@@ -51,19 +54,21 @@ const char * get_version()
 
 void show_version(const char * appname, const char * version)
 {
-    fprintf(stderr, "%s %s\n", appname, version); 
+    fprintf(stderr, "%s version %s\n", appname, version); 
 }
 
 void show_usage(const char * appname)
 {
     fprintf(stderr,        
-"Usage: %s [-c conf]\n"
+"Usage: %s [-f conf]\n"
 "\n"
 "Mandatory arguments to long options are mandatory for short options too.\n"
 "\n"
-"   -c          configure file\n"
+"   -f          configure file\n"
 "   -v          show version\n"
 "   -h          show this manual\n"
+"   -c          lbs client, monitor service and report to server\n"
+"   -s          lbs server, manager all client and do balance\n"
 "\n", appname);
 
     return;
@@ -112,7 +117,7 @@ std::string change_workpath()
     return linkname;
 }
 
-bool load_config(const std::string & file, LbsConf_t & config)
+bool load_server_config(const std::string & file, LbsConf_t & config)
 {
     uconfig * pconfig = uconfig::create();
     if (pconfig == NULL) {
@@ -222,8 +227,9 @@ bool load_config(const std::string & file, LbsConf_t & config)
         //}
     } while (0);
 
-    // ip = area, isp
-    // 1.2.3.4 = 020, 0 means 1.2.3.4 belongs to guangdong(020), telecom(0).
+    // ip/mask = area, isp
+    // 1.2.3.4/32 = 020, 0 means 1.2.3.4 belongs to guangdong(020), telecom(0).
+    // 1.2.3.4/24 = 020, 0 means 1.2.3.* belongs to guangdong(020), telecom(0)
     do {
         typedef std::map<std::string, std::string> group_type;
 
@@ -237,13 +243,27 @@ bool load_config(const std::string & file, LbsConf_t & config)
                 continue;
             }
 
-            int     isp   = atoi(areaisp[1].c_str());
-            uint32  ip = str2ip(it->first.c_str());
+            std::vector<std::string> ipmask;
+            split(it->first.c_str(), '/', ipmask);
+            uint32 ip = 0, mask = 0;
             
-            config.ipdb_area[ip] = areaisp[0];
-            config.ipdb_isp[ip]  = isp;
+            if (ipmask.size() >= 1) {
+                ip = str2ip(ipmask[0].c_str());
+            }
+            if (ipmask.size() >= 2) {
+                mask = atoi(ipmask[1].c_str());
+                if (mask == 0) {
+                    mask = 32;
+                }
+            }
 
-            //printf("extend ipdb:%s:%d, area:%s, isp:%d\n",
+            sipdb_extra_t extra;
+            extra.ip    = ip;
+            extra.mask  = mask;
+            extra.area  = areaisp[0];
+            extra.isp   = atoi(areaisp[1].c_str());
+
+            //printf("extra ipdb:%s:%d, area:%s, isp:%d\n",
             //    it->first.c_str(), ip, areaisp[0].c_str(), isp);
         }
     } while (0);
@@ -253,27 +273,180 @@ bool load_config(const std::string & file, LbsConf_t & config)
     return suc;
 }
 
+bool load_client_config(const std::string & file, LbsClientConf_t & config)
+{
+    uconfig * pconfig = uconfig::create();
+    if (pconfig == NULL) {
+        fprintf(stderr, "create config obj failed!\n");
+        return false;
+    }
+
+    bool suc = pconfig->load(file.c_str());
+    if (!suc) {
+        delete pconfig;
+        return suc;
+    }
+
+    // group client
+    do {
+        const char * value = NULL;
+        config.log_level = ulog_error;
+        if ((value = pconfig->get_string("client", "server")) != NULL) {
+            std::vector<std::string> host_ports;
+            split(value, ',', host_ports);
+            if (host_ports.size() == 0) {
+                suc = false;
+                fprintf(stderr, "split client:server failed!!\n-->%s\n", value);
+                break;
+            }
+
+            for (size_t i = 0; i < host_ports.size(); i++) {
+                std::vector<std::string> hostport;
+                split(host_ports[i].c_str(), ':', hostport);
+
+                if (hostport.size() != 2) {
+                    suc = false;
+                    fprintf(stderr, "split client:server failed!!\n-->%s\n", 
+                        host_ports[i].c_str());
+                    break;
+                }
+
+                int port = atoi(hostport[1].c_str());
+                if (port == 0 || hostport[0].empty()) {
+                    fprintf(stderr, "split client:server failed!!\n-->%s\n", 
+                        host_ports[i].c_str());
+                    suc = false;
+                    break;
+                }
+
+                LbsServerInfo_t info;
+                info.host = hostport[0];
+                info.port = port;
+
+                config.servers.push_back(info);
+            }
+
+            if (!suc) {
+                break;
+            }
+        } else {
+            fprintf(stderr, "no server info!!\n");
+            suc = false;
+            break;
+        }
+
+        config.dns_timeout = 20;
+        if ((value = pconfig->get_string("client", "dns_timeout")) != NULL) {
+            config.dns_timeout = atoi(value);
+        }
+
+        config.tcp_timeout = 20;
+        if ((value = pconfig->get_string("client", "tcp_timeout")) != NULL) {
+            config.tcp_timeout = atoi(value);
+        }
+
+        config.tcp_timeout = 20;
+        if ((value = pconfig->get_string("client", "tcp_timeout")) != NULL) {
+            config.tcp_timeout = atoi(value);
+        }
+
+        config.area = "020";
+        if ((value = pconfig->get_string("client", "area")) != NULL) {
+            config.area = value;
+        } else {
+            fprintf(stderr, "do not configure area code!!!\n");
+            suc = false;
+            break;
+        }
+    } while (0);
+
+    // net group.
+    do {
+        config.reportips = pconfig->get_group("reportip");
+        std::string sauto = pconfig->get_string("reportip", "auto");
+        config.reportips.erase(sauto);
+        int iauto = atoi(sauto.c_str());
+        
+        if (config.reportips.empty() && iauto == 0) {
+            fprintf(stderr, "no report ip\n");
+            suc = false;
+            break;
+        }
+
+        if (iauto) {
+            config.reportips.clear();
+            // get interface ips.
+        } 
+    } while (0);
+
+    // sequence. service <-> id map.
+    do {
+        typedef std::map<std::string, std::string> group_type;
+
+        group_type group = pconfig->get_group("sequence");
+        for (group_type::iterator it = group.begin(); it != group.end(); ++it) {
+            int id = atoi(it->second.c_str());
+            if ((int)config.services.size() <= id) {
+                config.services.resize(id + 1);
+            }
+            config.services[id] = it->first;
+        }
+
+        //for (size_t i = 0; i < config.services.size(); i++) {
+        //    fprintf(stderr, "%d = %s\n", i, config.services[i].c_str());
+        //}
+    } while (0);
+
+    // monitor
+    do {
+        typedef std::map<std::string, std::string> group_type;
+
+        group_type group = pconfig->get_group("monitor");
+        for (group_type::iterator it = group.begin(); it != group.end(); ++it) {
+            int port = atoi(it->second.c_str());
+
+            if (port == 0 || it->first.empty()) {
+                continue;
+            }
+
+            bool ok = false;
+            for (size_t i = 0; i < config.services.size(); i++) {
+                if (it->first == config.services[i]) {
+                    ok = true;
+                    break;
+                }
+            }
+
+            if (ok) {
+                config.monitors[it->first] = port;
+            }
+        }
+    } while (0);
+    
+    delete pconfig;
+    
+    return suc;
+}
+
+
 int main(int argc, char * argv[])
 {
     std::string appname     = get_appname(argv[0]);
     std::string version     = get_version();
     std::string workpath    = change_workpath();
     std::string config;
-
-
-    #if 0
+    
+#if 0
     CArea area;
     area.load("sheng.conf");
     
-    #if 0
     int idx = 0;
     const SAreaInfo * areainfo = NULL;
     while((areainfo = area.get(idx ++)) != NULL) {
-        //fprintf(stderr, "%s\n", areainfo->tostring().c_str());
+        fprintf(stderr, "%s\n", areainfo->tostring().c_str());
         //std::cerr << areainfo->tostring() << std::endl;
     }
-    #endif
-    #endif
+#endif
 
 #if 0
 #ifdef USE_IPDB_CZ
@@ -335,8 +508,11 @@ int main(int argc, char * argv[])
         exit(0);
     }
     
+    bool client = false;
+    bool server = false;
     int ch;
-    while((ch = getopt(argc, argv, "c:dhv")) != -1) {
+    
+    while((ch = getopt(argc, argv, "f:cvsh")) != -1) {
         switch(ch) {
             case 'h': 
                 show_usage(appname.c_str());
@@ -344,8 +520,14 @@ int main(int argc, char * argv[])
             case 'v':
                 show_version(appname.c_str(), version.c_str());
                 exit(0);
-            case 'c':
+            case 'f':
                 std::string(optarg).swap(config);
+                break;
+            case 'c':
+                client  = true;
+                break;
+            case 's':
+                server  = true;
                 break;
             default:
                 fprintf(stderr, "unknown arguments. (%c)", ch);
@@ -355,29 +537,58 @@ int main(int argc, char * argv[])
 
     if (config.empty()) {
         fprintf(stderr, "configure file empty, please check!\n");
-        exit(0);
-    }
-
-    if (config.empty()) {
-        //fprintf(stderr, "empty config file!\n\n");
         show_usage(appname.c_str());
         exit(0);
     }
 
-    LbsConf_t lbsconf;
-    if (!load_config(config, lbsconf)) {
-        fprintf(stderr, "load configure file(%s) failed!\n\n", config.c_str());
-        //show_usage(appname.c_str());
-        exit(0);
+    if (server && client) {
+        fprintf(stderr, "both server and client are set, use client mode!\n");
+        server = false;
     }
-    lbsconf.log_filename = appname;
-    lbsconf.log_filename.append(".log");
-    lbsconf.getipcnt    = 2;
 
-    CLbsServer server(lbsconf);
-    if (!server.run()) {
-        fprintf(stderr, "run error!\n");
-        exit(0);
+    if (server) {
+        fprintf(stderr, "!!!server mode!!!\n");
+        LbsConf_t lbsconf;
+
+        //default value.
+        lbsconf.log_filename = appname;
+        lbsconf.log_filename.append(".server.log");
+        lbsconf.getipcnt    = 2;
+        
+        if (!load_server_config(config, lbsconf)) {
+            fprintf(stderr, "load configure file(%s) failed!\n\n", 
+                config.c_str());
+            //show_usage(appname.c_str());
+            exit(0);
+        }
+        
+        CLbsLog log(lbsconf.log_path, lbsconf.log_filename, lbsconf.log_level);
+        CLbsServer server(lbsconf, log);
+        if (!server.run()) {
+            fprintf(stderr, "run error!\n");
+            exit(0);
+        }
+    } else {
+        fprintf(stderr, "!!!client mode!!!\n");
+
+        LbsClientConf_t lbsconf;
+        
+        lbsconf.log_filename = appname;
+        lbsconf.log_filename.append(".client.log");
+
+        if (!load_client_config(config, lbsconf)) {
+            fprintf(stderr, "load configure file(%s) failed!\n\n", 
+                config.c_str());
+            //show_usage(appname.c_str());
+            exit(0);
+        }
+        
+        CLbsLog log(lbsconf.log_path, lbsconf.log_filename, lbsconf.log_level);
+        CLbsClient client(lbsconf, log);
+        if (!client.run()) {
+            fprintf(stderr, "client mode run failed!\n");
+            exit(0);
+        }
     }
 #endif
     

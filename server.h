@@ -8,18 +8,23 @@
 #ifndef __LBS_SERVER_H__
 #define __LBS_SERVER_H__
 
-#include <stdarg.h>
 #include <string>
-#include <time.h>
 #include <vector>
 #include <map>
-#include <set>
 
 #include "lbsdb.h"
 #include "area.h"
 #include "ipdb_cz.h"
 
 typedef unsigned int uint32;
+
+typedef struct sipdb_extra
+{
+    uint32      ip;
+    uint32      mask;
+    uint32      isp;
+    std::string area;
+} sipdb_extra_t;
 
 typedef struct SLbsConf
 {
@@ -43,23 +48,26 @@ typedef struct SLbsConf
     std::vector<std::string> services;
 
     // extend ipdb.
-    std::map<uint32, std::string>   ipdb_area;
-    std::map<uint32, int>           ipdb_isp;
+    std::vector<sipdb_extra_t>  extra_ipdb;
+    //std::map<uint32, std::string>   ipdb_area;
+    //std::map<uint32, int>           ipdb_isp;
     
 } LbsConf_t;
 
+bool get_areaisp(const std::vector<sipdb_extra_t> & db, 
+    uint32 ip, std::string & area, int & isp);
+    
 class CLbsServerUnit;
+class CLbsLog;
 
 class CLbsServer
 {   
 public:
-    CLbsServer(LbsConf_t & config);
+    CLbsServer(LbsConf_t & config, CLbsLog & log);
 
     ~CLbsServer();
     
     bool run();
-
-    static void log_hook(int level, const char * fmt, va_list valist); 
 
 public:
     CLbsDB & lbsdb();
@@ -69,25 +77,13 @@ public:
     
 private:
     void run_forever();
-
-    void log(int level, const char * fmt, va_list valist);
-
-    bool reopen_log();
-
+    
     bool listen();
     
 private:
     LbsConf_t & config_;
+    CLbsLog &   log_;
     int listen_fd_;
-
-    static CLbsServer * sinstance;
-
-    //for log
-    int     log_fd_;
-    char *  log_buf_;
-    int     log_buf_size_;
-    time_t  last_logfile_t_;
-    pthread_mutex_t log_mutex_;
 
     std::vector<CLbsServerUnit *> server_units_;
 

@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <fstream>
+#include <set>
 
 #include <utools/ustring.h>
 
@@ -151,9 +152,15 @@ bool CArea::load(const char * filename)
             areainfo.index  = atoi(out[0].c_str());
             areainfo.name.swap(out[1]);
             areainfo.code.swap(out[2]);
-            
+
+            std::set<int> code_;
             for (size_t i = 3; i < cnt; i++) {
-                areainfo.neigbours.push_back(atoi(out[i].c_str()));
+                int code = atoi(out[i].c_str());
+                if (code_.find(code) != code_.end() || code == areainfo.index) {
+                    continue;
+                }
+                code_.insert(code);
+                areainfo.neigbours.push_back(code);
             }
 
             if (areainfo.index < 0) {
