@@ -263,6 +263,7 @@ bool load_server_config(const std::string & file, LbsConf_t & config)
             extra.area  = areaisp[0];
             extra.isp   = atoi(areaisp[1].c_str());
 
+            config.extra_ipdb.push_back(extra);
             //printf("extra ipdb:%s:%d, area:%s, isp:%d\n",
             //    it->first.c_str(), ip, areaisp[0].c_str(), isp);
         }

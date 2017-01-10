@@ -28,16 +28,18 @@ bool get_areaisp(const std::vector<sipdb_extra_t> & db,
     for (size_t i = 0; i < size; i++) {
         const sipdb_extra_t & one = db[i];
 
-        if (one.mask == 32 && ip == one.ip) {
-            return true;
-        }
-
         uint32 mask = ~((1 << (32 - one.mask)) - 1);
         
         if ((one.ip & mask) == (ip & mask)) {
+            area = one.area;
+            isp  = one.isp;
             return true;
         }
     }
+
+    area = "";
+    isp  = 0;
+    
     return false;
 }
 

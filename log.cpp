@@ -117,15 +117,14 @@ bool CLbsLog::reopen()
                     break;
                 }
             } while (trytimes --);
-            
-            last_logfile_t_ = now;
         } else {
             openflag = 0;
         }
     }
     
-    log_fd_ = open(logfile.c_str(), openflag | O_WRONLY, 0666);
-
+    log_fd_         = open(logfile.c_str(), openflag | O_WRONLY, 0666);
+    last_logfile_t_ = time(NULL);
+    
     if (log_fd_ >= 0) {
         lseek(log_fd_, 0, SEEK_END);
     }
@@ -143,8 +142,8 @@ void CLbsLog::log(int level, const char * fmt, va_list valist)
     size_t off = 0;
     
     time_t t_time = time(NULL);
-
-    if (log_fd_ < 0 || last_logfile_t_ / 86400 != t_time / 86400) {
+    if (log_fd_ < 0 || 
+        (last_logfile_t_ - off_) / 86400 != (t_time - off_) / 86400) {
         if (!reopen()) {
             return;
         }

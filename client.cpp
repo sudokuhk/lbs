@@ -20,5 +20,5 @@ CLbsClient::~CLbsClient()
 
 bool CLbsClient::run()
 {
-    
+    return true;
 }
