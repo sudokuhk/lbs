@@ -26,9 +26,9 @@ CLbsConnection::CLbsConnection(const LbsConf_t & config, CLbsMonitor & monitor,
     , schudule_(schudule)
     , socket_(1024, fd, &schudule_)
     , peerip_(ip)
-    , http_(socket_, *this, false)
+    , http_(socket_, *this, false, false, true)
 {
-    socket_.set_timeout(60 * 1000); // 60s
+    socket_.set_timeout(30 * 1000); // 60s
 }
 
 CLbsConnection::~CLbsConnection()

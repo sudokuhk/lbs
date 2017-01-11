@@ -80,7 +80,7 @@ LIBRARYS =
 
 INC_PATH += ../net-utility  ../net-utility
 LIB_PATH += 
-LIBRARYS += z
+LIBRARYS += z rt
 			 
 
 #****************************************************************************
