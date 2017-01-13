@@ -17,6 +17,13 @@
 #include <utools/ufs.h>
 #include <ulog/ulog.h>
 
+#define U_SECONDS_PER_MIN   60
+#define U_MINUTES_PER_HOUR  60
+#define U_HOURS_PER_DAY     24
+
+#define U_SECONDS_PER_HOUR  (U_SECONDS_PER_MIN * U_MINUTES_PER_HOUR)
+#define U_SECONDS_PER_DAY   (U_HOURS_PER_DAY * U_SECONDS_PER_HOUR)
+
 CLbsLog * CLbsLog::sinstance = NULL;
 
 void CLbsLog::log_hook(int level, const char * fmt, va_list valist)
@@ -32,7 +39,7 @@ CLbsLog::CLbsLog(const std::string & path, const std::string & name, int level)
     , log_buf_(NULL)
     , log_buf_size_(2048)
     , last_logfile_t_(0)
-    , off_(8 * 60 * 60)
+    , off_(8 * U_SECONDS_PER_HOUR + 2 * U_SECONDS_PER_MIN)
 {
     log_buf_    = (char *)malloc(log_buf_size_);
     pthread_mutex_init(&log_mutex_, NULL);
@@ -89,20 +96,29 @@ bool CLbsLog::reopen()
     
     if (access(logfile.c_str(), F_OK) == 0) {
         
-        time_t now  = time(NULL) - off_;
+        time_t now  = time(NULL) + off_;
         time_t last = 0;
         if (last_logfile_t_ > 0) {
-            last    = last_logfile_t_ - off_;
+            last    = last_logfile_t_ + off_;
         }
+
         
         struct stat sb;
-        if ((last != 0 && last / 86400 != now / 86400) ||
-            (!stat(logfile.c_str(), &sb) && 
-                now / 86400 != (sb.st_mtime - off_) / 86400 && 
-                now > (sb.st_mtime - off_))) {
-            
+        int ret = stat(logfile.c_str(), &sb);
+        
+        //printf("off:%d\n", off_);
+        //printf("last:%lu, now:%lu\n", last, now);
+        //printf("stat: mtime:%lu\n", sb.st_mtime + off_);
+        //printf("calc:%d, %d, %d\n", last / U_SECONDS_PER_DAY, 
+        //    now / U_SECONDS_PER_DAY, 
+        //    (sb.st_mtime + off_) / U_SECONDS_PER_DAY);
+        
+        if ((last != 0 && last / U_SECONDS_PER_DAY != now / U_SECONDS_PER_DAY) ||
+            (ret == 0 && now / U_SECONDS_PER_DAY != (sb.st_mtime + off_) / U_SECONDS_PER_DAY && 
+                now >= (sb.st_mtime + off_))) {
+
             struct tm tm_time;
-            localtime_r(&last, &tm_time);
+            localtime_r(&sb.st_mtime, &tm_time);
         
             char buf[20];
             strftime(buf, sizeof(buf), "%Y%m%d", &tm_time); 
@@ -111,7 +127,8 @@ bool CLbsLog::reopen()
             renamefile.append(".").append(buf);
 
             int trytimes = 3;
-            
+                
+            //printf("rename log  %s-%s\n", logfile.c_str(), renamefile.c_str());
             do {
                 if (rename(logfile.c_str(), renamefile.c_str()) == 0) {
                     break;
@@ -142,8 +159,15 @@ void CLbsLog::log(int level, const char * fmt, va_list valist)
     size_t off = 0;
     
     time_t t_time = time(NULL);
+
+    //printf("last:%lu, off_:%d, now:%lu\n", last_logfile_t_, off_, t_time);
+    //printf("adjust. last:%lu, now:%lu\n", last_logfile_t_ + off_, t_time + off_);
+    //printf("day, last:%lu, now:%lu\n", 
+    //    (last_logfile_t_ + off_) / U_SECONDS_PER_DAY,
+    //    (t_time + off_) / U_SECONDS_PER_DAY);
     if (log_fd_ < 0 || 
-        (last_logfile_t_ - off_) / 86400 != (t_time - off_) / 86400) {
+        (last_logfile_t_ + off_) / U_SECONDS_PER_DAY 
+            != (t_time + off_) / U_SECONDS_PER_DAY) {
         if (!reopen()) {
             return;
         }

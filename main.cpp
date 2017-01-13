@@ -185,6 +185,14 @@ bool load_server_config(const std::string & file, LbsConf_t & config)
         if ((value = pconfig->get_string("server", "defarea")) != NULL) {
             config.defarea = value;
         }
+
+        config.delayclose = 10 * 1000;
+        if ((value = pconfig->get_string("server", "delayclose")) != NULL) {
+            config.delayclose = atoi(value);
+            if (config.delayclose < 0) {
+                config.delayclose = 10 * 1000;
+            }
+        }
     } while (0);
 
      // log
@@ -364,9 +372,14 @@ bool load_client_config(const std::string & file, LbsClientConf_t & config)
     // net group.
     do {
         config.reportips = pconfig->get_group("reportip");
-        std::string sauto = pconfig->get_string("reportip", "auto");
-        config.reportips.erase(sauto);
-        int iauto = atoi(sauto.c_str());
+        const char * pauto = pconfig->get_string("reportip", "auto");
+
+        int iauto = 0;
+        
+        if (pauto != NULL) {
+            config.reportips.erase("auto");
+            iauto = atoi(pauto);
+        }
         
         if (config.reportips.empty() && iauto == 0) {
             fprintf(stderr, "no report ip\n");

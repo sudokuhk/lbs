@@ -46,7 +46,7 @@ void CLbsConnection::run()
         // if connection is ok, wait 20ms.
         // if client don't close, server close it active.
         char buf;
-        socket_.set_timeout(20);
+        socket_.set_timeout(config_.delayclose);
         socket_.read(&buf, 1);
     }
     

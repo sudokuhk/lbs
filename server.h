@@ -38,6 +38,7 @@ typedef struct SLbsConf
     std::string     prefix;
     int             getipcnt;
     std::string     defarea;
+    int             delayclose;
 
     //log
     int             log_level;
