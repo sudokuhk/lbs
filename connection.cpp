@@ -41,6 +41,15 @@ void CLbsConnection::run()
     monitor_.onDisconnect(socket_.socket());
     ulog(ulog_debug, "disconnect to fd:%d, (%s)!\n", 
         socket_.socket(), peerip_.c_str());
+
+    if (socket_.good()) {
+        // if connection is ok, wait 20ms.
+        // if client don't close, server close it active.
+        char buf;
+        socket_.set_timeout(20);
+        socket_.read(&buf, 1);
+    }
+    
     ::close(socket_.socket());
     delete this;
 }
@@ -81,6 +90,7 @@ int CLbsConnection::onhttp(const uhttprequest & request,
         handler hf = h->func;
         ret = (this->*hf)(request, response, errcode);
     }
+    
     return ret;
 }
 
