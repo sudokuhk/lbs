@@ -39,7 +39,7 @@ CLbsLog::CLbsLog(const std::string & path, const std::string & name, int level)
     , log_buf_(NULL)
     , log_buf_size_(2048)
     , last_logfile_t_(0)
-    , off_(8 * U_SECONDS_PER_HOUR + 2 * U_SECONDS_PER_MIN)
+    , off_(8 * U_SECONDS_PER_HOUR)
 {
     log_buf_    = (char *)malloc(log_buf_size_);
     pthread_mutex_init(&log_mutex_, NULL);
